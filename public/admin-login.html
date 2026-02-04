@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Admin Login</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+
+<style>
+body {
+  font-family: Arial, sans-serif;
+  padding: 40px;
+  max-width: 400px;
+  margin: auto;
+}
+input, button {
+  width: 100%;
+  padding: 12px;
+  margin-top: 10px;
+}
+button {
+  background: #2563eb;
+  color: white;
+}
+#error {
+  color: red;
+  margin-top: 10px;
+}
+</style>
+</head>
+
+<body>
+
+<h2>Admin Login</h2>
+
+<input id="user" placeholder="Username">
+<input id="pass" type="password" placeholder="Password">
+<button onclick="login()">Login</button>
+
+<div id="error"></div>
+
+<script>
+async function login() {
+  const res = await fetch("/admin/login", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      username: user.value,
+      password: pass.value
+    })
+  });
+
+  if (res.ok) {
+    window.location = "/admin.html";
+  } else {
+    document.getElementById("error").textContent =
+      "Invalid credentials";
+  }
+}
+</script>
+
+</body>
+</html>

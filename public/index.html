@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Zone Check App</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+
+<style>
+body {
+  font-family: Arial, sans-serif;
+  padding: 15px;
+  max-width: 500px;
+  margin: auto;
+}
+
+input, select, button {
+  width: 100%;
+  padding: 12px;
+  margin-top: 8px;
+  font-size: 16px;
+}
+
+button.enter { background:#2563eb; color:white; }
+button.exit { background:#dc2626; color:white; }
+
+#activeCard {
+  padding: 16px;
+  margin-bottom: 15px;
+  border-radius: 10px;
+  text-align: center;
+}
+
+.active {
+  background:#d1fae5;
+  border:2px solid #10b981;
+}
+
+.inactive {
+  background:#f3f4f6;
+  border:2px dashed #9ca3af;
+}
+
+#warning {
+  color:#b91c1c;
+  font-weight:bold;
+  margin-top:10px;
+}
+</style>
+</head>
+
+<body>
+
+<h2>Zone Check</h2>
+
+<div id="activeCard" class="inactive">
+  <h3 id="activeTitle">No Active Zone</h3>
+  <p id="activeDetails">Not currently checked in.</p>
+</div>
+
+<input id="badge" type="number" placeholder="Badge Number">
+
+<select id="zone">
+  <option>Zone 1</option>
+  <option>Zone 2</option>
+  <option>Zone 3</option>
+  <option>Zone 4</option>
+</select>
+
+<button class="enter" onclick="enterZone()">Enter Zone</button>
+<button class="exit" onclick="exitZone()">Exit Zone</button>
+
+<div id="warning"></div>
+
+<script>
+let db;
+let activeCheck = null;
+let timer;
+
+function loadSavedBadge() {
+  const saved = localStorage.getItem("badge_number");
+  if (saved) {
+    document.getElementById("badge").value = saved;
+  }
+}
+
+
+const request = indexedDB.open("zoneChecksDB", 1);
+request.onupgradeneeded = e => {
+  db = e.target.result;
+  db.createObjectStore("checks", { keyPath: "local_id" });
+};
+request.onsuccess = e => {
+  db = e.target.result;
+  loadSavedBadge()
+  restoreActiveCheck();
+  syncChecks();
+};
+
+function showWarning(msg) {
+  const w = document.getElementById("warning");
+  w.textContent = msg;
+  setTimeout(() => w.textContent = "", 3000);
+}
+
+function enterZone() {
+  if (activeCheck) return showWarning("Already in a zone.");
+
+  const badge = document.getElementById("badge").value;
+  if (!badge) return showWarning("Badge number required.");
+
+  localStorage.setItem("badge_number", badge);
+
+  activeCheck = {
+    local_id: crypto.randomUUID(),
+    badge_number: badge,
+    zone: document.getElementById("zone").value,
+    entry_time: new Date().toISOString(),
+    active: true,
+    synced: false
+  };
+
+  saveLocal(activeCheck);
+  setActiveUI();
+}
+
+function exitZone() {
+  if (!activeCheck) return showWarning("Not checked into a zone.");
+
+  const now = new Date();
+  const duration = Math.round(
+    (now - new Date(activeCheck.entry_time)) / 60000
+  );
+
+  if (duration < 60) {
+    if (!confirm(`Only ${duration} minutes spent. Exit anyway?`)) return;
+  }
+
+  activeCheck.exit_time = now.toISOString();
+  activeCheck.duration_minutes = duration;
+  activeCheck.active = false;
+
+  saveLocal(activeCheck);
+  clearActiveUI();
+  activeCheck = null;
+
+  syncChecks();
+}
+
+function saveLocal(record) {
+  const tx = db.transaction("checks", "readwrite");
+  tx.objectStore("checks").put(record);
+}
+
+function restoreActiveCheck() {
+  const tx = db.transaction("checks", "readonly");
+  tx.objectStore("checks").getAll().onsuccess = e => {
+    const found = e.target.result.find(r => r.active);
+    if (found) {
+      activeCheck = found;
+      setActiveUI();
+    }
+  };
+}
+
+function setActiveUI() {
+  document.getElementById("activeCard").className = "active";
+  document.getElementById("activeTitle").textContent =
+    "🟢 Active: " + activeCheck.zone;
+  updateTimer();
+  timer = setInterval(updateTimer, 1000);
+}
+
+function clearActiveUI() {
+  document.getElementById("activeCard").className = "inactive";
+  document.getElementById("activeTitle").textContent = "No Active Zone";
+  document.getElementById("activeDetails").textContent =
+    "Not currently checked in.";
+  clearInterval(timer);
+}
+
+function updateTimer() {
+  const start = new Date(activeCheck.entry_time);
+  const mins = Math.floor((Date.now() - start) / 60000);
+  document.getElementById("activeDetails").textContent =
+    `Started ${start.toLocaleTimeString()} • ${mins} min elapsed`;
+}
+
+async function syncChecks() {
+  if (!navigator.onLine) return;
+
+  const tx = db.transaction("checks", "readonly");
+  tx.objectStore("checks").getAll().onsuccess = async e => {
+    for (const c of e.target.result) {
+      if (!c.synced && !c.active && c.exit_time) {
+        await fetch("/sync", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(c)
+        });
+        c.synced = true;
+        saveLocal(c);
+      }
+    }
+  };
+}
+
+window.addEventListener("online", syncChecks);
+</script>
+
+</body>
+</html>

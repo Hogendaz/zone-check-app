@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Admin – Zone Checks</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+
+<style>
+body {
+  font-family: Arial, sans-serif;
+  padding: 20px;
+}
+
+input, select, button {
+  padding: 8px;
+  margin: 5px;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 15px;
+}
+
+th, td {
+  border: 1px solid #ccc;
+  padding: 6px;
+  text-align: center;
+}
+
+th {
+  background: #f3f4f6;
+}
+
+.summary {
+  margin-top: 15px;
+  font-weight: bold;
+}
+</style>
+</head>
+
+<body>
+
+<h2>Admin – Zone Check Report</h2>
+
+<div>
+  <input id="filterBadge" placeholder="Badge #">
+  <select id="filterZone">
+    <option value="">All Zones</option>
+    <option>Zone 1</option>
+    <option>Zone 2</option>
+    <option>Zone 3</option>
+    <option>Zone 4</option>
+  </select>
+  <input type="date" id="filterFrom">
+  <input type="date" id="filterTo">
+  <button onclick="loadChecks()">Apply Filters</button>
+  <button onclick="window.print()">Print</button>
+</div>
+
+<div class="summary" id="summary"></div>
+<div class="summary" id="zoneTotals"></div>
+
+
+<table>
+  <thead>
+    <tr>
+      <th>Badge</th>
+      <th>Zone</th>
+      <th>Entry</th>
+      <th>Exit</th>
+      <th>Minutes</th>
+    </tr>
+  </thead>
+  <tbody id="rows"></tbody>
+</table>
+
+<script>
+let allChecks = [];
+
+async function loadChecks() {
+  const res = await fetch("/checks");
+
+  if (res.status === 403) {
+    window.location = "/admin-login.html";
+    return;
+  }
+
+  allChecks = await res.json();
+  applyFilters();
+}
+
+
+function applyFilters() {
+  const badge = document.getElementById("filterBadge").value;
+  const zone = document.getElementById("filterZone").value;
+  const from = document.getElementById("filterFrom").value;
+  const to = document.getElementById("filterTo").value;
+
+  let filtered = allChecks.filter(c => {
+    if (badge && c.badge_number !== badge) return false;
+    if (zone && c.zone !== zone) return false;
+
+    const entryDate = c.entry_time.slice(0, 10);
+    if (from && entryDate < from) return false;
+    if (to && entryDate > to) return false;
+
+    return true;
+  });
+
+  renderTable(filtered);
+}
+
+function renderTable(data) {
+  const tbody = document.getElementById("rows");
+  tbody.innerHTML = "";
+
+  let totalMinutes = 0;
+  const zoneCounts = {
+    "Zone 1": 0,
+    "Zone 2": 0,
+    "Zone 3": 0,
+    "Zone 4": 0
+  };
+
+  data.forEach(c => {
+    totalMinutes += c.duration_minutes || 0;
+    zoneCounts[c.zone]++;
+
+    tbody.innerHTML += `
+      <tr>
+        <td>${c.badge_number}</td>
+        <td>${c.zone}</td>
+        <td>${new Date(c.entry_time).toLocaleString()}</td>
+        <td>${new Date(c.exit_time).toLocaleString()}</td>
+        <td>${c.duration_minutes}</td>
+      </tr>
+    `;
+  });
+
+  document.getElementById("summary").textContent =
+    `Total Checks: ${data.length} | Total Time: ${totalMinutes} minutes`;
+
+  document.getElementById("zoneTotals").innerHTML =
+    `Zone 1: ${zoneCounts["Zone 1"]} | 
+     Zone 2: ${zoneCounts["Zone 2"]} | 
+     Zone 3: ${zoneCounts["Zone 3"]} | 
+     Zone 4: ${zoneCounts["Zone 4"]}`;
+}
+
+
+loadChecks();
+</script>
+
+</body>
+</html>
