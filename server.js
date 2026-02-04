@@ -4,7 +4,7 @@ const cors = require("cors");
 const path = require("path");
 const session = require("express-session");
 const ADMIN_USER = "admin";
-const ADMIN_PASS = "Lincoln26!"; 
+const ADMIN_PASS = process.env.ADMIN_PASS || "changeme123" 
 
 const app = express();
 app.use(cors());
