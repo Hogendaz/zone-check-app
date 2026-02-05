@@ -6,6 +6,27 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 
 <style>
+  @media print {
+  button,
+  input,
+  select,
+  label {
+    display: none !important;
+  }
+
+  body {
+    padding: 0;
+  }
+
+  table {
+    font-size: 12px;
+  }
+
+  h2 {
+    text-align: center;
+  }
+}
+
 body {
   font-family: Arial, sans-serif;
   padding: 20px;
@@ -36,12 +57,35 @@ th {
   margin-top: 15px;
   font-weight: bold;
 }
+#archivedWatermark {
+  display: none;
+  position: fixed;
+  top: 45%;
+  left: 50%;
+  transform: translate(-50%, -50%) rotate(-30deg);
+  font-size: 64px;
+  font-weight: bold;
+  color: rgba(180, 0, 0, 0.15);
+  z-index: 9999;
+  pointer-events: none;
+  user-select: none;
+}
+
+/* Make sure it prints */
+@media print {
+  #archivedWatermark {
+    display: block;
+  }
+}
+
+
 </style>
 </head>
 
 <body>
-
-<h2>Admin – Zone Check Report</h2>
+<div id="archivedWatermark">ARCHIVED DATA</div>
+<h2>Zone Check Report</h2>
+<div id="reportPeriod" style="margin-bottom:10px;font-weight:bold;"></div>
 
 <div>
   <input id="filterBadge" placeholder="Badge #">
@@ -52,20 +96,35 @@ th {
     <option>Zone 3</option>
     <option>Zone 4</option>
   </select>
+  <select id="filterShift">
+  <option value="">All Shifts</option>
+  <option value="Day">Day Shift</option>
+  <option value="Night">Night Shift</option>
+  </select>
   <input type="date" id="filterFrom">
   <input type="date" id="filterTo">
   <button onclick="loadChecks()">Apply Filters</button>
   <button onclick="window.print()">Print</button>
 </div>
 
+<label style="margin-left:10px;">
+  <input type="checkbox" id="showArchived" onchange="loadChecks()">
+  Show Archived
+</label>
+
 <div class="summary" id="summary"></div>
 <div class="summary" id="zoneTotals"></div>
+
+<div id="printHeader">
+  <p><strong>Report Generated:</strong> <span id="printDate"></span></p>
+</div>
 
 
 <table>
   <thead>
     <tr>
       <th>Badge</th>
+      <th>Shift</th>
       <th>Zone</th>
       <th>Entry</th>
       <th>Exit</th>
@@ -75,11 +134,60 @@ th {
   <tbody id="rows"></tbody>
 </table>
 
+<button
+  style="background:#dc2626;color:white"
+  onclick="resetReports()">
+  Reset Reporting Period
+</button>
+
+
 <script>
 let allChecks = [];
 
+async function resetReports() {
+  const confirm1 = confirm(
+    "This will clear the current report view.\nArchived data is preserved."
+  );
+
+  if (!confirm1) return;
+
+  const confirm2 = confirm(
+    "Are you sure you want to start a new reporting period?"
+  );
+
+  if (!confirm2) return;
+
+  await fetch("/admin/reset", { method: "POST" });
+  loadChecks();
+}
+async function loadReportStart() {
+  const res = await fetch("/admin/report-start");
+  if (!res.ok) return;
+
+  const data = await res.json();
+  if (data.start) {
+    document.getElementById("reportPeriod").textContent =
+      "Current Reporting Period Month: " +
+      new Date(data.start).toLocaleString(undefined, {
+        year: "numeric",
+        month: "long"
+      });
+  }
+}
+
+
 async function loadChecks() {
-  const res = await fetch("/checks");
+  const showArchived =
+    document.getElementById("showArchived")?.checked;
+    
+  document.getElementById("archivedWatermark").style.display =
+    showArchived ? "block" : "none";
+
+  const url = showArchived
+    ? "/checks?archived=1"
+    : "/checks";
+
+  const res = await fetch(url);
 
   if (res.status === 403) {
     window.location = "/admin-login.html";
@@ -91,15 +199,19 @@ async function loadChecks() {
 }
 
 
+
 function applyFilters() {
   const badge = document.getElementById("filterBadge").value;
   const zone = document.getElementById("filterZone").value;
   const from = document.getElementById("filterFrom").value;
   const to = document.getElementById("filterTo").value;
+  const shift = document.getElementById("filterShift").value;
+
 
   let filtered = allChecks.filter(c => {
     if (badge && c.badge_number !== badge) return false;
     if (zone && c.zone !== zone) return false;
+    if (shift && c.shift !== shift) return false;
 
     const entryDate = c.entry_time.slice(0, 10);
     if (from && entryDate < from) return false;
@@ -130,6 +242,7 @@ function renderTable(data) {
     tbody.innerHTML += `
       <tr>
         <td>${c.badge_number}</td>
+        <td>${c.shift}</td>
         <td>${c.zone}</td>
         <td>${new Date(c.entry_time).toLocaleString()}</td>
         <td>${new Date(c.exit_time).toLocaleString()}</td>
