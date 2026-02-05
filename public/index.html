@@ -57,7 +57,7 @@ button.exit { background:#dc2626; color:white; }
   <p id="activeDetails">Not currently checked in.</p>
 </div>
 
-<input id="badge" type="number" placeholder="Badge Number">
+<div id="badgeDisplay" style="margin-bottom:10px;font-weight:bold;"></div>
 
 <select id="zone">
   <option>Zone 1</option>
@@ -77,14 +77,19 @@ let db;
 let activeCheck = null;
 let timer;
 
-function loadSavedBadge() {
-  const saved = localStorage.getItem("badge_number");
-  if (saved) {
-    document.getElementById("badge").value = saved;
+/* 🔐 Deputy login enforcement */
+document.addEventListener("DOMContentLoaded", () => {
+  const badge = localStorage.getItem("badge_number");
+  if (!badge) {
+    window.location = "/deputy-login.html";
+    return;
   }
-}
 
+  document.getElementById("badgeDisplay").textContent =
+    "User: " + badge;
+});
 
+/* IndexedDB */
 const request = indexedDB.open("zoneChecksDB", 1);
 request.onupgradeneeded = e => {
   db = e.target.result;
@@ -92,7 +97,6 @@ request.onupgradeneeded = e => {
 };
 request.onsuccess = e => {
   db = e.target.result;
-  loadSavedBadge()
   restoreActiveCheck();
   syncChecks();
 };
@@ -103,13 +107,28 @@ function showWarning(msg) {
   setTimeout(() => w.textContent = "", 3000);
 }
 
-function enterZone() {
-  if (activeCheck) return showWarning("Already in a zone.");
+/* ✅ FIXED enterZone */
+async function enterZone() {
+  if (activeCheck) {
+    showWarning("Already checked into a zone on this device.");
+    return;
+  }
 
-  const badge = document.getElementById("badge").value;
-  if (!badge) return showWarning("Badge number required.");
+  const badge = localStorage.getItem("badge_number");
 
-  localStorage.setItem("badge_number", badge);
+  /* Cross-device check */
+  if (navigator.onLine) {
+    const res = await fetch(`/active-check/${badge}`);
+    const data = await res.json();
+
+    if (data.active) {
+      const started = new Date(data.entry_time).toLocaleTimeString();
+      showWarning(
+        `⚠️ Already active in ${data.zone} (started ${started}) on another device.`
+      );
+      return;
+    }
+  }
 
   activeCheck = {
     local_id: crypto.randomUUID(),
@@ -125,7 +144,10 @@ function enterZone() {
 }
 
 function exitZone() {
-  if (!activeCheck) return showWarning("Not checked into a zone.");
+  if (!activeCheck) {
+    showWarning("Not checked into a zone.");
+    return;
+  }
 
   const now = new Date();
   const duration = Math.round(

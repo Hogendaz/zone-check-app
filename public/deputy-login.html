@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Deputy Login</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+
+<style>
+body {
+  font-family: Arial, sans-serif;
+  padding: 30px;
+  max-width: 400px;
+  margin: auto;
+}
+
+input, button {
+  width: 100%;
+  padding: 14px;
+  margin-top: 12px;
+  font-size: 16px;
+}
+
+button {
+  background: #2563eb;
+  color: white;
+}
+</style>
+</head>
+
+<body>
+
+<h2>Deputy Login</h2>
+
+<input
+  id="badge"
+  type="number"
+  placeholder="Enter Badge Number"
+  autofocus
+/>
+
+<button onclick="login()">Continue</button>
+
+<script>
+function login() {
+  const badge = document.getElementById("badge").value;
+
+  if (!badge) {
+    alert("Badge number required");
+    return;
+  }
+
+  // Save badge per device
+  localStorage.setItem("badge_number", badge);
+
+  // Go to zone screen
+  window.location = "/";
+}
+</script>
+
+</body>
+</html>

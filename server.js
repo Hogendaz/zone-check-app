@@ -19,20 +19,11 @@ app.use(session({
 
 const db = new sqlite3.Database("./checks.db");
 
-// DB Table
+/* =====================
+   SCHEMA SETUP
+===================== */
 db.serialize(() => {
-
-  const now = new Date();
-  const currentMonth = `${now.getFullYear()}-${String(
-  now.getMonth() + 1
-    ).padStart(2, "0")}`;
-
-db.run(
-  `INSERT OR IGNORE INTO meta (key, value)
-   VALUES ('report_month', ?)`,
-  [currentMonth]
-);
-
+  // Core tables
   db.run(`
     CREATE TABLE IF NOT EXISTS checks (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -53,26 +44,40 @@ db.run(
     )
   `);
 
+  // Initialize reporting metadata
+  const now = new Date();
+  const currentMonth = `${now.getFullYear()}-${String(
+    now.getMonth() + 1
+  ).padStart(2, "0")}`;
+
+  db.run(
+    `INSERT OR IGNORE INTO meta (key, value)
+     VALUES ('report_month', ?)`,
+    [currentMonth]
+  );
+
   db.run(
     `INSERT OR IGNORE INTO meta (key, value)
      VALUES ('report_start', ?)`,
-    [new Date().toISOString()]
+    [now.toISOString()]
   );
 });
 
+/* =====================
+   MONTHLY ROLLOVER
+===================== */
 function checkMonthlyRollover() {
   const now = new Date();
   const thisMonth = `${now.getFullYear()}-${String(
     now.getMonth() + 1
   ).padStart(2, "0")}`;
+
   db.get(
     `SELECT value FROM meta WHERE key = 'report_month'`,
     (err, row) => {
       if (err || !row) return;
 
-      const storedMonth = row.value;
-
-      if (storedMonth !== thisMonth) {
+      if (row.value !== thisMonth) {
         console.log("📅 New month detected — archiving previous month");
 
         db.serialize(() => {
@@ -91,16 +96,20 @@ function checkMonthlyRollover() {
   );
 }
 
+/* Run once at startup */
 checkMonthlyRollover();
 
-
-
+/* =====================
+   HELPERS
+===================== */
 function getShift(entryTimeISO) {
   const hour = new Date(entryTimeISO).getHours();
   return (hour >= 6 && hour < 18) ? "Day" : "Night";
 }
 
-// ✅ ADMIN LOGIN
+/* =====================
+   AUTH
+===================== */
 app.post("/admin/login", (req, res) => {
   const { username, password } = req.body;
 
@@ -112,7 +121,9 @@ app.post("/admin/login", (req, res) => {
   res.status(401).json({ success: false });
 });
 
-// ✅ PROTECTED ADMIN CHECKS (ONLY ONE)
+/* =====================
+   ADMIN REPORTS
+===================== */
 app.get("/checks", (req, res) => {
   checkMonthlyRollover();
 
@@ -135,20 +146,59 @@ app.get("/checks", (req, res) => {
   });
 });
 
+/* =====================
+   ACTIVE CHECK (CROSS DEVICE)
+===================== */
+app.get("/active-check/:badge", (req, res) => {
+  const badge = req.params.badge;
 
-//RESET REPORTING PERIOD (ARCHIVE)
+  db.get(
+    `SELECT * FROM checks
+     WHERE badge_number = ?
+       AND exit_time IS NULL
+       AND archived = 0`,
+    [badge],
+    (err, row) => {
+      if (err) {
+        console.error(err);
+        return res.status(500).json({ error: "DB error" });
+      }
+
+      if (row) {
+        return res.json({
+          active: true,
+          zone: row.zone,
+          entry_time: row.entry_time
+        });
+      }
+
+      res.json({ active: false });
+    }
+  );
+});
+
+/* =====================
+   ADMIN RESET
+===================== */
 app.post("/admin/reset", (req, res) => {
   if (!req.session.admin) {
     return res.status(403).json({ error: "Unauthorized" });
   }
 
-  const now = new Date().toISOString();
+  const now = new Date();
+  const currentMonth = `${now.getFullYear()}-${String(
+    now.getMonth() + 1
+  ).padStart(2, "0")}`;
 
   db.serialize(() => {
     db.run(`UPDATE checks SET archived = 1`);
     db.run(
       `UPDATE meta SET value = ? WHERE key = 'report_start'`,
-      [now]
+      [now.toISOString()]
+    );
+    db.run(
+      `UPDATE meta SET value = ? WHERE key = 'report_month'`,
+      [currentMonth]
     );
   });
 
@@ -168,8 +218,9 @@ app.get("/admin/report-start", (req, res) => {
   );
 });
 
-
-//SYNC WITH SHIFT + ARCHIVED
+/* =====================
+   SYNC
+===================== */
 app.post("/sync", (req, res) => {
   const {
     badge_number,
