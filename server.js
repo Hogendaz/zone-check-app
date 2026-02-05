@@ -230,22 +230,46 @@ app.post("/sync", (req, res) => {
     duration_minutes
   } = req.body;
 
-  const shift = getShift(entry_time);
-
-  db.run(
-    `INSERT INTO checks
-     (badge_number, zone, entry_time, exit_time, duration_minutes, shift, archived)
-     VALUES (?, ?, ?, ?, ?, ?, 0)`,
-    [badge_number, zone, entry_time, exit_time, duration_minutes, shift],
-    err => {
+  // Check if an active check already exists
+  db.get(
+    `SELECT id FROM checks
+     WHERE badge_number = ?
+       AND exit_time IS NULL
+       AND archived = 0`,
+    [badge_number],
+    (err, row) => {
       if (err) {
         console.error(err);
-        return res.status(500).json({ error: "Insert failed" });
+        return res.status(500).json({ error: "DB error" });
       }
-      res.json({ success: true });
+
+      if (!row) {
+        // INSERT (enter)
+        const shift = getShift(entry_time);
+
+        db.run(
+          `INSERT INTO checks
+           (badge_number, zone, entry_time, exit_time, duration_minutes, shift, archived)
+           VALUES (?, ?, ?, ?, ?, ?, 0)`,
+          [badge_number, zone, entry_time, exit_time || null, duration_minutes || null, shift],
+          () => res.json({ success: true })
+        );
+      } else if (exit_time) {
+        // UPDATE (exit)
+        db.run(
+          `UPDATE checks
+           SET exit_time = ?, duration_minutes = ?
+           WHERE id = ?`,
+          [exit_time, duration_minutes, row.id],
+          () => res.json({ success: true })
+        );
+      } else {
+        res.json({ success: true });
+      }
     }
   );
 });
+
 
 app.listen(3000, () =>
   console.log("✅ Server running at http://localhost:3000")

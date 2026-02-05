@@ -116,6 +116,46 @@ async function enterZone() {
 
   const badge = localStorage.getItem("badge_number");
 
+  // 🔒 Cross-device check (server-side)
+  if (navigator.onLine) {
+    const res = await fetch(`/active-check/${badge}`);
+    const data = await res.json();
+
+    if (data.active) {
+      const started = new Date(data.entry_time).toLocaleTimeString();
+      showWarning(
+        `⚠️ Already active in ${data.zone} (started ${started}) on another device.`
+      );
+      return;
+    }
+  }
+
+  // ✅ Create local active check
+  activeCheck = {
+    local_id: crypto.randomUUID(),
+    badge_number: badge,
+    zone: document.getElementById("zone").value,
+    entry_time: new Date().toISOString(),
+    active: true,
+    synced: false
+  };
+
+  saveLocal(activeCheck);
+  setActiveUI();
+
+  // 📡 Register active check with server
+  if (navigator.onLine) {
+    fetch("/sync", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(activeCheck)
+    });
+  }
+}
+
+
+  const badge = localStorage.getItem("badge_number");
+
   /* Cross-device check */
   if (navigator.onLine) {
     const res = await fetch(`/active-check/${badge}`);
