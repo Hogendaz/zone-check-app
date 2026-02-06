@@ -196,6 +196,7 @@ function restoreActiveCheck() {
 }
 
 function setActiveUI() {
+  clearInterval(timer);
   document.getElementById("activeCard").className = "active";
   document.getElementById("activeTitle").textContent =
     "🟢 Active: " + activeCheck.zone;
