@@ -153,31 +153,67 @@ async function enterZone() {
   }
 }
 
-function exitZone() {
-  if (!activeCheck) {
-    showWarning("Not checked into a zone.");
+async function exitZone() {
+  const badge = localStorage.getItem("badge_number");
+
+  // Case 1: Active zone on THIS device
+  if (activeCheck) {
+    const now = new Date();
+    const duration = Math.round(
+      (now - new Date(activeCheck.entry_time)) / 60000
+    );
+
+    if (duration < 60) {
+      if (!confirm(`Only ${duration} minutes spent. Exit anyway?`)) return;
+    }
+
+    activeCheck.exit_time = now.toISOString();
+    activeCheck.duration_minutes = duration;
+    activeCheck.active = false;
+
+    saveLocal(activeCheck);
+    clearActiveUI();
+    activeCheck = null;
+
+    syncChecks();
     return;
   }
 
-  const now = new Date();
-  const duration = Math.round(
-    (now - new Date(activeCheck.entry_time)) / 60000
-  );
-
-  if (duration < 60) {
-    if (!confirm(`Only ${duration} minutes spent. Exit anyway?`)) return;
+  // Case 2: No local active zone — check server
+  if (!navigator.onLine) {
+    showWarning("No active zone on this device.");
+    return;
   }
 
-  activeCheck.exit_time = now.toISOString();
-  activeCheck.duration_minutes = duration;
-  activeCheck.active = false;
+  const res = await fetch(`/active-check/${badge}`);
+  const data = await res.json();
 
-  saveLocal(activeCheck);
-  clearActiveUI();
-  activeCheck = null;
+  if (!data.active) {
+    showWarning("No active zone found.");
+    return;
+  }
 
-  syncChecks();
+  // Case 3: Active zone on ANOTHER device
+  const started = new Date(data.entry_time).toLocaleTimeString();
+  const confirmForce = confirm(
+    `You are active in ${data.zone} (started ${started}) on another device.\n\nExit that zone now?`
+  );
+
+  if (!confirmForce) return;
+
+  const forceRes = await fetch(`/force-exit/${badge}`, {
+    method: "POST"
+  });
+
+  const result = await forceRes.json();
+
+  if (result.success) {
+    showWarning("Zone exited successfully.");
+  } else {
+    showWarning("Unable to exit zone.");
+  }
 }
+
 
 function saveLocal(record) {
   const tx = db.transaction("checks", "readwrite");

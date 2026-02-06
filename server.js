@@ -270,6 +270,42 @@ app.post("/sync", (req, res) => {
   );
 });
 
+app.post("/force-exit/:badge", (req, res) => {
+  const badge = req.params.badge;
+
+  const now = new Date();
+
+  db.get(
+    `SELECT id, entry_time FROM checks
+     WHERE badge_number = ?
+       AND exit_time IS NULL
+       AND archived = 0`,
+    [badge],
+    (err, row) => {
+      if (err) {
+        console.error(err);
+        return res.status(500).json({ error: "DB error" });
+      }
+
+      if (!row) {
+        return res.json({ success: false, message: "No active zone found" });
+      }
+
+      const duration = Math.round(
+        (now - new Date(row.entry_time)) / 60000
+      );
+
+      db.run(
+        `UPDATE checks
+         SET exit_time = ?, duration_minutes = ?
+         WHERE id = ?`,
+        [now.toISOString(), duration, row.id],
+        () => res.json({ success: true, duration })
+      );
+    }
+  );
+});
+
 
 app.listen(3000, () =>
   console.log("✅ Server running at http://localhost:3000")
