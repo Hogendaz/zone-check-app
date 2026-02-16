@@ -306,6 +306,27 @@ app.post("/force-exit/:badge", (req, res) => {
   );
 });
 
+app.get("/my-checks/:badge", (req, res) => {
+  const badge = req.params.badge;
+
+  db.all(
+    `SELECT zone, entry_time, exit_time, duration_minutes
+     FROM checks
+     WHERE badge_number = ?
+       AND archived = 0
+     ORDER BY entry_time DESC`,
+    [badge],
+    (err, rows) => {
+      if (err) {
+        console.error(err);
+        return res.status(500).json({ error: "DB error" });
+      }
+      res.json(rows);
+    }
+  );
+});
+
+
 
 app.listen(3000, () =>
   console.log("✅ Server running at http://localhost:3000")

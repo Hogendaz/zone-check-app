@@ -68,6 +68,8 @@ button.exit { background:#dc2626; color:white; }
 
 <button class="enter" onclick="enterZone()">Enter Zone</button>
 <button class="exit" onclick="exitZone()">Exit Zone</button>
+<button onclick="toggleMyChecks()">My Checks</button>
+<div id="myChecksPanel" style="margin-top:15px; display:none;"></div>
 <a href="/admin-login.html">Admin Login</a>
 
 <div id="warning"></div>
@@ -273,6 +275,66 @@ async function syncChecks() {
     }
   };
 }
+
+async function toggleMyChecks() {
+  const panel = document.getElementById("myChecksPanel");
+
+  if (panel.style.display === "block") {
+    panel.style.display = "none";
+    return;
+  }
+
+  const badge = localStorage.getItem("badge_number");
+
+  const res = await fetch(`/my-checks/${badge}`);
+  const checks = await res.json();
+
+  if (!checks.length) {
+    panel.innerHTML = "<p>No checks this reporting period.</p>";
+    panel.style.display = "block";
+    return;
+  }
+
+  let totalMinutes = 0;
+
+  let html = `
+    <h3>My Checks (Current Period)</h3>
+    <table style="width:100%; font-size:14px;">
+      <tr>
+        <th>Zone</th>
+        <th>Time</th>
+        <th>Minutes</th>
+      </tr>
+  `;
+
+  checks.forEach(c => {
+    if (c.duration_minutes) {
+      totalMinutes += c.duration_minutes;
+    }
+
+    const entry = new Date(c.entry_time).toLocaleTimeString();
+    const exit = c.exit_time
+      ? new Date(c.exit_time).toLocaleTimeString()
+      : "Active";
+
+    html += `
+      <tr>
+        <td>${c.zone}</td>
+        <td>${entry} - ${exit}</td>
+        <td>${c.duration_minutes || "-"}</td>
+      </tr>
+    `;
+  });
+
+  html += `
+    </table>
+    <p><strong>Total Time:</strong> ${totalMinutes} minutes</p>
+  `;
+
+  panel.innerHTML = html;
+  panel.style.display = "block";
+}
+
 
 window.addEventListener("online", syncChecks);
 </script>
