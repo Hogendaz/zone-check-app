@@ -59,12 +59,21 @@ button.exit { background:#dc2626; color:white; }
 
 <div id="badgeDisplay" style="margin-bottom:10px;font-weight:bold;"></div>
 
-<select id="zone">
+<select id="zone" onchange="handleZoneChange()">
   <option>Zone 1</option>
   <option>Zone 2</option>
   <option>Zone 3</option>
   <option>Zone 4</option>
+  <option>BLM</option>
 </select>
+<div id="blmLocationContainer" style="display:none;">
+  <input
+    id="blmLocation"
+    type="text"
+    placeholder="Enter BLM Location"
+  />
+</div>
+
 
 <button class="enter" onclick="enterZone()">Enter Zone</button>
 <button class="exit" onclick="exitZone()">Exit Zone</button>
@@ -109,7 +118,7 @@ function showWarning(msg) {
   setTimeout(() => w.textContent = "", 3000);
 }
 
-/* ✅ FIXED enterZone */
+/* enterZone */
 async function enterZone() {
   if (activeCheck) {
     showWarning("Already checked into a zone on this device.");
@@ -132,15 +141,29 @@ async function enterZone() {
     }
   }
 
+const zone = document.getElementById("zone").value;
+let blmLocation = null;
+
+if (zone === "BLM") {
+  blmLocation = document.getElementById("blmLocation").value.trim();
+  if (!blmLocation) {
+    showWarning("BLM location required.");
+    return;
+  }
+}
+
+
   // ✅ Create local active check
-  activeCheck = {
-    local_id: crypto.randomUUID(),
-    badge_number: badge,
-    zone: document.getElementById("zone").value,
-    entry_time: new Date().toISOString(),
-    active: true,
-    synced: false
-  };
+activeCheck = {
+  local_id: crypto.randomUUID(),
+  badge_number: badge,
+  zone: zone,
+  blm_location: blmLocation,
+  entry_time: new Date().toISOString(),
+  active: true,
+  synced: false
+};
+
 
   saveLocal(activeCheck);
   setActiveUI();
@@ -207,12 +230,30 @@ async function exitZone() {
     method: "POST"
   });
 
-  const result = await forceRes.json();
+const result = await forceRes.json();
 
   if (result.success) {
     showWarning("Zone exited successfully.");
+
+    // Optional improvement:
+    activeCheck = null;
+    clearActiveUI();
+
   } else {
     showWarning("Unable to exit zone.");
+  }
+
+}
+
+function handleZoneChange() {
+  const zone = document.getElementById("zone").value;
+  const container = document.getElementById("blmLocationContainer");
+
+  if (zone === "BLM") {
+    container.style.display = "block";
+  } else {
+    container.style.display = "none";
+    document.getElementById("blmLocation").value = "";
   }
 }
 
@@ -226,9 +267,17 @@ function restoreActiveCheck() {
   const tx = db.transaction("checks", "readonly");
   tx.objectStore("checks").getAll().onsuccess = e => {
     const found = e.target.result.find(r => r.active);
+
     if (found) {
       activeCheck = found;
       setActiveUI();
+
+      if (found.zone === "BLM") {
+        document.getElementById("zone").value = "BLM";
+        document.getElementById("blmLocationContainer").style.display = "block";
+        document.getElementById("blmLocation").value =
+          found.blm_location || "";
+      }
     }
   };
 }
@@ -319,7 +368,10 @@ async function toggleMyChecks() {
 
     html += `
       <tr>
-        <td>${c.zone}</td>
+        <td>
+          ${c.zone}
+          ${c.blm_location ? `<br><small>${c.blm_location}</small>` : ""}
+        </td>
         <td>${entry} - ${exit}</td>
         <td>${c.duration_minutes || "-"}</td>
       </tr>

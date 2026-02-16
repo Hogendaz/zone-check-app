@@ -6,11 +6,12 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 
 <style>
-  @media print {
+@media print {
   button,
   input,
   select,
-  label {
+  label,
+  a {
     display: none !important;
   }
 
@@ -24,6 +25,10 @@
 
   h2 {
     text-align: center;
+  }
+
+  #archivedWatermark {
+    display: block;
   }
 }
 
@@ -57,6 +62,7 @@ th {
   margin-top: 15px;
   font-weight: bold;
 }
+
 #archivedWatermark {
   display: none;
   position: fixed;
@@ -70,51 +76,42 @@ th {
   pointer-events: none;
   user-select: none;
 }
-
-/* Make sure it prints */
-@media print {
-  #archivedWatermark {
-    display: block;
-  }
-}
-
-@media print {
-  a {
-    display: none;
-  }
-}
-
-
 </style>
 </head>
 
 <body>
+
 <div id="archivedWatermark">ARCHIVED DATA</div>
+
 <h2>Zone Check Report</h2>
+
 <div style="margin-bottom:15px;">
-  <a href="/" style="text-decoration:none;">
-    ← Back to Home
-  </a>
+  <a href="/">← Back to Home</a>
 </div>
 
 <div id="reportPeriod" style="margin-bottom:10px;font-weight:bold;"></div>
 
 <div>
   <input id="filterBadge" placeholder="Badge #">
+
   <select id="filterZone">
     <option value="">All Zones</option>
     <option>Zone 1</option>
     <option>Zone 2</option>
     <option>Zone 3</option>
     <option>Zone 4</option>
+    <option>BLM</option>
   </select>
+
   <select id="filterShift">
-  <option value="">All Shifts</option>
-  <option value="Day">Day Shift</option>
-  <option value="Night">Night Shift</option>
+    <option value="">All Shifts</option>
+    <option value="Day">Day Shift</option>
+    <option value="Night">Night Shift</option>
   </select>
+
   <input type="date" id="filterFrom">
   <input type="date" id="filterTo">
+
   <button onclick="loadChecks()">Apply Filters</button>
   <button onclick="window.print()">Print</button>
 </div>
@@ -126,11 +123,6 @@ th {
 
 <div class="summary" id="summary"></div>
 <div class="summary" id="zoneTotals"></div>
-
-<div id="printHeader">
-  <p><strong>Report Generated:</strong> <span id="printDate"></span></p>
-</div>
-
 
 <table>
   <thead>
@@ -152,7 +144,6 @@ th {
   Reset Reporting Period
 </button>
 
-
 <script>
 let allChecks = [];
 
@@ -160,38 +151,21 @@ async function resetReports() {
   const confirm1 = confirm(
     "This will clear the current report view.\nArchived data is preserved."
   );
-
   if (!confirm1) return;
 
   const confirm2 = confirm(
     "Are you sure you want to start a new reporting period?"
   );
-
   if (!confirm2) return;
 
   await fetch("/admin/reset", { method: "POST" });
   loadChecks();
 }
-async function loadReportStart() {
-  const res = await fetch("/admin/report-start");
-  if (!res.ok) return;
-
-  const data = await res.json();
-  if (data.start) {
-    document.getElementById("reportPeriod").textContent =
-      "Current Reporting Period Month: " +
-      new Date(data.start).toLocaleString(undefined, {
-        year: "numeric",
-        month: "long"
-      });
-  }
-}
-
 
 async function loadChecks() {
   const showArchived =
     document.getElementById("showArchived")?.checked;
-    
+
   document.getElementById("archivedWatermark").style.display =
     showArchived ? "block" : "none";
 
@@ -210,15 +184,12 @@ async function loadChecks() {
   applyFilters();
 }
 
-
-
 function applyFilters() {
   const badge = document.getElementById("filterBadge").value;
   const zone = document.getElementById("filterZone").value;
   const from = document.getElementById("filterFrom").value;
   const to = document.getElementById("filterTo").value;
   const shift = document.getElementById("filterShift").value;
-
 
   let filtered = allChecks.filter(c => {
     if (badge && c.badge_number !== badge) return false;
@@ -240,25 +211,24 @@ function renderTable(data) {
   tbody.innerHTML = "";
 
   let totalMinutes = 0;
-  const zoneCounts = {
-    "Zone 1": 0,
-    "Zone 2": 0,
-    "Zone 3": 0,
-    "Zone 4": 0
-  };
+  const zoneCounts = {};
 
   data.forEach(c => {
     totalMinutes += c.duration_minutes || 0;
-    zoneCounts[c.zone]++;
+
+    zoneCounts[c.zone] = (zoneCounts[c.zone] || 0) + 1;
 
     tbody.innerHTML += `
       <tr>
         <td>${c.badge_number}</td>
         <td>${c.shift}</td>
-        <td>${c.zone}</td>
+        <td>
+          ${c.zone}
+          ${c.blm_location ? `<br><small>${c.blm_location}</small>` : ""}
+        </td>
         <td>${new Date(c.entry_time).toLocaleString()}</td>
-        <td>${new Date(c.exit_time).toLocaleString()}</td>
-        <td>${c.duration_minutes}</td>
+        <td>${c.exit_time ? new Date(c.exit_time).toLocaleString() : "Active"}</td>
+        <td>${c.duration_minutes || "-"}</td>
       </tr>
     `;
   });
@@ -266,13 +236,13 @@ function renderTable(data) {
   document.getElementById("summary").textContent =
     `Total Checks: ${data.length} | Total Time: ${totalMinutes} minutes`;
 
-  document.getElementById("zoneTotals").innerHTML =
-    `Zone 1: ${zoneCounts["Zone 1"]} | 
-     Zone 2: ${zoneCounts["Zone 2"]} | 
-     Zone 3: ${zoneCounts["Zone 3"]} | 
-     Zone 4: ${zoneCounts["Zone 4"]}`;
-}
+  let totalsHtml = "";
+  for (const zone in zoneCounts) {
+    totalsHtml += `${zone}: ${zoneCounts[zone]} | `;
+  }
 
+  document.getElementById("zoneTotals").innerHTML = totalsHtml;
+}
 
 loadChecks();
 </script>

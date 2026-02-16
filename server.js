@@ -38,6 +38,16 @@ db.serialize(() => {
   `);
 
   db.run(`
+  ALTER TABLE checks
+  ADD COLUMN blm_location TEXT
+`, err => {
+  if (err && !err.message.includes("duplicate column")) {
+    console.error("Error adding blm_location column:", err.message);
+  }
+});
+
+
+  db.run(`
     CREATE TABLE IF NOT EXISTS meta (
       key TEXT PRIMARY KEY,
       value TEXT
@@ -227,7 +237,8 @@ app.post("/sync", (req, res) => {
     zone,
     entry_time,
     exit_time,
-    duration_minutes
+    duration_minutes,
+    blm_location
   } = req.body;
 
   // Check if an active check already exists
@@ -249,9 +260,17 @@ app.post("/sync", (req, res) => {
 
         db.run(
           `INSERT INTO checks
-           (badge_number, zone, entry_time, exit_time, duration_minutes, shift, archived)
-           VALUES (?, ?, ?, ?, ?, ?, 0)`,
-          [badge_number, zone, entry_time, exit_time || null, duration_minutes || null, shift],
+           (badge_number, zone, entry_time, exit_time, duration_minutes, shift, archived, blm_location)
+           VALUES (?, ?, ?, ?, ?, ?, 0, ?)`,
+          [
+                badge_number,
+                zone,
+                entry_time,
+                exit_time || null,
+                duration_minutes || null,
+                shift,
+                blm_location || null
+          ],
           () => res.json({ success: true })
         );
       } else if (exit_time) {
@@ -310,7 +329,7 @@ app.get("/my-checks/:badge", (req, res) => {
   const badge = req.params.badge;
 
   db.all(
-    `SELECT zone, entry_time, exit_time, duration_minutes
+    `SELECT zone, entry_time, exit_time, duration_minutes, blm_location
      FROM checks
      WHERE badge_number = ?
        AND archived = 0
