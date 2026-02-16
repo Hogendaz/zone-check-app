@@ -17,7 +17,7 @@ app.use(session({
   saveUninitialized: false
 }));
 
-const db = new sqlite3.Database("./checks.db");
+const db = new sqlite3.Database("/data/checks.db");
 
 /* =====================
    SCHEMA SETUP
