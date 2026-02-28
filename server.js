@@ -295,7 +295,7 @@ app.post("/force-exit/:badge", (req, res) => {
   const now = new Date();
 
   db.get(
-    `SELECT id, entry_time FROM checks
+    `SELECT id, entry_time, zone FROM checks
      WHERE badge_number = ?
        AND exit_time IS NULL
        AND archived = 0`,
@@ -310,9 +310,13 @@ app.post("/force-exit/:badge", (req, res) => {
         return res.json({ success: false, message: "No active zone found" });
       }
 
-      const duration = Math.round(
+      let duration = Math.round(
         (now - new Date(row.entry_time)) / 60000
       );
+        // BLM Only - round UP to next 15-minute block
+      if (row.zone === "BLM") {
+        duration = Math.ceil(duration / 15) * 15;
+      }
 
       db.run(
         `UPDATE checks

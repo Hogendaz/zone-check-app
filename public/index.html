@@ -184,9 +184,15 @@ async function exitZone() {
   // Case 1: Active zone on THIS device
   if (activeCheck) {
     const now = new Date();
-    const duration = Math.round(
+
+    let duration = Math.round(
       (now - new Date(activeCheck.entry_time)) / 60000
     );
+
+    // BLM Only - round UP to next 15-minute block
+    if (activeCheck.zone === "BLM") {
+      duration = Math.ceil(duration / 15) * 15;
+    }
 
     if (duration < 60) {
       if (!confirm(`Only ${duration} minutes spent. Exit anyway?`)) return;
