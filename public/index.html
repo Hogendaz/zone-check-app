@@ -88,6 +88,18 @@ let db;
 let activeCheck = null;
 let timer;
 
+/* Escapes user-supplied strings before they're inserted into innerHTML —
+   see same helper in admin.html for why this matters. */
+function escapeHtml(str) {
+  return String(str ?? "").replace(/[&<>"']/g, ch => ({
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    '"': "&quot;",
+    "'": "&#39;"
+  }[ch]));
+}
+
 /* 🔐 Deputy login enforcement */
 document.addEventListener("DOMContentLoaded", () => {
   const badge = localStorage.getItem("badge_number");
@@ -339,17 +351,26 @@ async function toggleMyChecks() {
     return;
   }
 
-  const badge = localStorage.getItem("badge_number");
+  await loadMyChecks();
+  panel.style.display = "block";
+}
 
+async function loadMyChecks() {
+  const badge = localStorage.getItem("badge_number");
   const res = await fetch(`/my-checks/${badge}`);
   const checks = await res.json();
+  const panel = document.getElementById("myChecksPanel");
 
   if (!checks.length) {
     panel.innerHTML = "<p>No checks this reporting period.</p>";
-    panel.style.display = "block";
     return;
   }
 
+  renderMyChecks(checks);
+}
+
+function renderMyChecks(checks) {
+  const panel = document.getElementById("myChecksPanel");
   let totalMinutes = 0;
 
   let html = `
@@ -359,6 +380,7 @@ async function toggleMyChecks() {
         <th>Zone</th>
         <th>Time</th>
         <th>Minutes</th>
+        <th></th>
       </tr>
   `;
 
@@ -375,11 +397,48 @@ async function toggleMyChecks() {
     html += `
       <tr>
         <td>
-          ${c.zone}
-          ${c.blm_location ? `<br><small>${c.blm_location}</small>` : ""}
+          ${escapeHtml(c.zone)}
+          ${c.blm_location ? `<br><small>${escapeHtml(c.blm_location)}</small>` : ""}
+          ${c.edited ? `<br><small style="color:#b45309;">✏️ edited</small>` : ""}
         </td>
         <td>${entry} - ${exit}</td>
         <td>${c.duration_minutes || "-"}</td>
+        <td>
+          <button onclick="startEdit(${c.id})"
+            style="width:auto;padding:4px 8px;font-size:12px;">Edit</button>
+        </td>
+      </tr>
+      <tr id="editRow-${c.id}" style="display:none;">
+        <td colspan="4">
+          <div style="background:#f3f4f6;padding:10px;border-radius:8px;margin:6px 0;">
+            <label style="display:block;font-size:12px;margin-top:6px;">
+              Entry time
+              <input type="datetime-local" id="editEntry-${c.id}"
+                value="${toDatetimeLocal(c.entry_time)}"
+                style="width:100%;padding:8px;font-size:14px;">
+            </label>
+            <label style="display:block;font-size:12px;margin-top:6px;">
+              Exit time
+              <input type="datetime-local" id="editExit-${c.id}"
+                value="${toDatetimeLocal(c.exit_time)}"
+                style="width:100%;padding:8px;font-size:14px;">
+            </label>
+            <label style="display:block;font-size:12px;margin-top:6px;">
+              Reason for change (required)
+              <input type="text" id="editReason-${c.id}"
+                placeholder="e.g. forgot to clock out"
+                style="width:100%;padding:8px;font-size:14px;">
+            </label>
+            <button onclick="saveEdit(${c.id})"
+              style="width:auto;padding:8px 14px;font-size:13px;background:#2563eb;color:white;margin-top:10px;">
+              Save
+            </button>
+            <button onclick="cancelEdit(${c.id})"
+              style="width:auto;padding:8px 14px;font-size:13px;margin-top:10px;">
+              Cancel
+            </button>
+          </div>
+        </td>
       </tr>
     `;
   });
@@ -390,9 +449,62 @@ async function toggleMyChecks() {
   `;
 
   panel.innerHTML = html;
-  panel.style.display = "block";
 }
 
+function startEdit(id) {
+  document.getElementById(`editRow-${id}`).style.display = "table-row";
+}
+
+function cancelEdit(id) {
+  document.getElementById(`editRow-${id}`).style.display = "none";
+}
+
+/* datetime-local inputs need "YYYY-MM-DDTHH:mm" in *local* time, with no
+   timezone suffix — this converts an ISO timestamp to that format. */
+function toDatetimeLocal(iso) {
+  if (!iso) return "";
+  const d = new Date(iso);
+  const pad = n => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+async function saveEdit(id) {
+  const entryVal = document.getElementById(`editEntry-${id}`).value;
+  const exitVal = document.getElementById(`editExit-${id}`).value;
+  const reason = document.getElementById(`editReason-${id}`).value.trim();
+
+  if (!entryVal) {
+    showWarning("Entry time is required.");
+    return;
+  }
+  if (!reason) {
+    showWarning("Please explain why you're changing this entry.");
+    return;
+  }
+
+  const badge = localStorage.getItem("badge_number");
+
+  const res = await fetch(`/checks/${id}/edit`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      badge_number: badge,
+      entry_time: new Date(entryVal).toISOString(),
+      exit_time: exitVal ? new Date(exitVal).toISOString() : null,
+      reason
+    })
+  });
+
+  const result = await res.json();
+
+  if (!res.ok) {
+    showWarning(result.error || "Unable to save changes.");
+    return;
+  }
+
+  showWarning("Check updated.");
+  await loadMyChecks();
+}
 
 window.addEventListener("online", syncChecks);
 </script>

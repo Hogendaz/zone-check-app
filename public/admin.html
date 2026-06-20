@@ -133,6 +133,7 @@ th {
       <th>Entry</th>
       <th>Exit</th>
       <th>Minutes</th>
+      <th>Edits</th>
     </tr>
   </thead>
   <tbody id="rows"></tbody>
@@ -144,8 +145,78 @@ th {
   Reset Reporting Period
 </button>
 
+<div id="editHistoryModal"
+     style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.45);
+            align-items:center; justify-content:center; z-index:1000;">
+  <div style="background:white; padding:20px; border-radius:8px; max-width:95%;
+              max-height:80%; overflow:auto;">
+    <h3 style="margin-top:0;">Edit History</h3>
+    <table style="font-size:13px;">
+      <thead>
+        <tr>
+          <th>When</th>
+          <th>Edited By</th>
+          <th>Entry Time</th>
+          <th>Exit Time</th>
+          <th>Duration</th>
+          <th>Reason</th>
+        </tr>
+      </thead>
+      <tbody id="editHistoryBody"></tbody>
+    </table>
+    <button onclick="closeEditHistory()"
+      style="margin-top:14px;width:auto;padding:8px 16px;">Close</button>
+  </div>
+</div>
+
 <script>
 let allChecks = [];
+
+/* Escapes user-supplied strings before they're inserted into innerHTML,
+   so a badge number or BLM location containing markup (e.g. "<img onerror=...>")
+   renders as inert text instead of executing as HTML/JS. */
+function escapeHtml(str) {
+  return String(str ?? "").replace(/[&<>"']/g, ch => ({
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    '"': "&quot;",
+    "'": "&#39;"
+  }[ch]));
+}
+
+async function showEditHistory(checkId) {
+  const res = await fetch(`/admin/edits?check_id=${checkId}`);
+
+  if (res.status === 403) {
+    window.location = "/admin-login.html";
+    return;
+  }
+
+  const edits = await res.json();
+
+  const fmt = iso => (iso ? new Date(iso).toLocaleString() : "—");
+
+  const rowsHtml = edits.length
+    ? edits.map(e => `
+        <tr>
+          <td>${fmt(e.edited_at)}</td>
+          <td>${escapeHtml(e.edited_by)}</td>
+          <td>${fmt(e.old_entry_time)} → ${fmt(e.new_entry_time)}</td>
+          <td>${fmt(e.old_exit_time)} → ${fmt(e.new_exit_time)}</td>
+          <td>${e.old_duration_minutes ?? "—"} → ${e.new_duration_minutes ?? "—"}</td>
+          <td>${escapeHtml(e.reason)}</td>
+        </tr>
+      `).join("")
+    : `<tr><td colspan="6">No edit history found.</td></tr>`;
+
+  document.getElementById("editHistoryBody").innerHTML = rowsHtml;
+  document.getElementById("editHistoryModal").style.display = "flex";
+}
+
+function closeEditHistory() {
+  document.getElementById("editHistoryModal").style.display = "none";
+}
 
 async function resetReports() {
   const confirm1 = confirm(
@@ -220,15 +291,20 @@ function renderTable(data) {
 
     tbody.innerHTML += `
       <tr>
-        <td>${c.badge_number}</td>
-        <td>${c.shift}</td>
+        <td>${escapeHtml(c.badge_number)}</td>
+        <td>${escapeHtml(c.shift)}</td>
         <td>
-          ${c.zone}
-          ${c.blm_location ? `<br><small>${c.blm_location}</small>` : ""}
+          ${escapeHtml(c.zone)}
+          ${c.blm_location ? `<br><small>${escapeHtml(c.blm_location)}</small>` : ""}
         </td>
         <td>${new Date(c.entry_time).toLocaleString()}</td>
         <td>${c.exit_time ? new Date(c.exit_time).toLocaleString() : "Active"}</td>
         <td>${c.duration_minutes || "-"}</td>
+        <td>
+          ${c.edited
+            ? `<button onclick="showEditHistory(${c.id})" style="width:auto;padding:4px 8px;font-size:12px;">✏️ View</button>`
+            : ""}
+        </td>
       </tr>
     `;
   });
