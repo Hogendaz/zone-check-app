@@ -42,6 +42,7 @@ button {
 async function login() {
   const res = await fetch("/admin/login", {
     method: "POST",
+    credentials: "include",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       username: user.value,
