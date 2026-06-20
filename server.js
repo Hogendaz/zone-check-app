@@ -36,11 +36,15 @@ if (!ADMIN_PASS) {
 const ALLOWED_ORIGIN = process.env.ALLOWED_ORIGIN;
 
 const app = express();
+if (isProd) {
+  app.set("trust proxy", 1);
+}
 app.use(cors(ALLOWED_ORIGIN ? { origin: ALLOWED_ORIGIN, credentials: true } : { origin: false }));
 app.use(express.json());
 app.use(express.static("public"));
 
 app.use(session({
+  proxy: isProd,
   secret: SESSION_SECRET,
   resave: false,
   saveUninitialized: false,
