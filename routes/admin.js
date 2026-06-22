@@ -79,7 +79,7 @@ router.get("/checks", requireAdmin, (req, res) => {
 
   const showArchived = req.query.archived === "1";
   const query = showArchived
-    ? `SELECT * FROM checks ORDER BY entry_time DESC`
+    ? `SELECT * FROM checks WHERE archived = 1 ORDER BY entry_time DESC`
     : `SELECT * FROM checks WHERE archived = 0 ORDER BY entry_time DESC`;
 
   db.all(query, (err, rows) => {
