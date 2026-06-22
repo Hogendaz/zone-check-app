@@ -186,9 +186,7 @@ function escapeHtml(str) {
 }
 
 async function showEditHistory(checkId) {
-  const res = await fetch(`/admin/edits?check_id=${checkId}`, {
-    credentials: "include"
-  });
+  const res = await fetch(`/admin/edits?check_id=${checkId}`);
 
   if (res.status === 403) {
     window.location = "/admin-login.html";
@@ -231,7 +229,7 @@ async function resetReports() {
   );
   if (!confirm2) return;
 
-  await fetch("/admin/reset", { method: "POST", credentials: "include" });
+  await fetch("/admin/reset", { method: "POST" });
   loadChecks();
 }
 
@@ -246,7 +244,7 @@ async function loadChecks() {
     ? "/checks?archived=1"
     : "/checks";
 
-  const res = await fetch(url, { credentials: "include" });
+  const res = await fetch(url);
 
   if (res.status === 403) {
     window.location = "/admin-login.html";
